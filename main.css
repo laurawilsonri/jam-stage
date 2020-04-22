@@ -26,6 +26,21 @@ canvas {
 	display: block;
 }
 
+#intro-screen {
+	position: absolute;
+	margin: auto;
+	width: 100%;
+	height: 100%;
+	text-align: center;
+	background: black;
+}
+
+#intro-btn {
+	margin: auto;
+	top: 45%;
+    position: relative;
+}
+
 #info {
 	position: absolute;
 	top: 0px;
@@ -85,15 +100,4 @@ a, button, input, select {
 	color: #777777;
 	font-size: 12px;
 }
-© 2020 GitHub, Inc.
-Terms
-Privacy
-Security
-Status
-Help
-Contact GitHub
-Pricing
-API
-Training
-Blog
-About
+
