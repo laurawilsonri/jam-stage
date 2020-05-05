@@ -1,7 +1,7 @@
 // JavaScript file used to control the main movement in Jam Stage
 // built off the Three.js example given here: https://threejs.org/examples/#webgl_geometry_hierarchy2
 
-var SEPARATION = 90, AMOUNTX = 40, AMOUNTY = 40;
+var SEPARATION = 100, AMOUNTX = 40, AMOUNTY = 40;
 
 var container;
 var camera, scene, renderer;
@@ -18,12 +18,11 @@ var windowHalfY = window.innerHeight / 2;
 //loader.load( 'helvetiker_bold.typeface.json', function ( font ) {
 //} );
 
-var frequencyData = null;
-var analyzer = null;
-var activeParticles = null;
-let basePositions = [];
-let highestParticleY = 0;
-let dir = 1;
+let frequencyData = null;
+let timeDomainData = null;
+let analyzer = null;
+let bufferLength = 0;
+let geometry = null;
 
 
 // called when BEGIN button is clicked 
@@ -33,7 +32,7 @@ function begin() {
 
     // start visualization
     init();
-    animate();
+     animate();
 }
 
 /* 
@@ -62,19 +61,16 @@ function init() {
 
     var positions = new Float32Array( numParticles * 3 );
     var scales = new Float32Array( numParticles );
-    activeParticles = {}
 
     var i = 0, j = 0;
 
     for ( var ix = 0; ix < AMOUNTX; ix ++ ) {
-        activeParticles[ix] = [] // no active particles for this row yet
 
         for ( var iy = 0; iy < AMOUNTY; iy ++ ) {
 
             positions[ i ] = ix * SEPARATION - ( ( AMOUNTX * SEPARATION ) / 2 ); // x
             positions[ i + 1 ] = 0; // y
             positions[ i + 2 ] = iy * SEPARATION - ( ( AMOUNTY * SEPARATION ) / 2 ); // z
-            basePositions.push(0)
 
             scales[ j ] = 1;
 
@@ -101,10 +97,14 @@ function init() {
         
 
     } );
+    
 
     particles = new THREE.Points( geometry, material );
     scene.add( particles );
 
+    
+
+    //
 
     renderer = new THREE.WebGLRenderer( { antialias: true } );
     renderer.shadowMap.enabled = true;
@@ -139,7 +139,9 @@ function setupAudio(){
     audioSrc.connect(analyzer)
     audioSrc.connect(ctx.destination);
     ctx.resume();
+    bufferLength = analyzer.frequencyBinCount;
     frequencyData = new Uint8Array(analyzer.frequencyBinCount)
+    timeDomainData= new Uint8Array(analyzer.fftSize);
 }
 
 function onWindowResize() {
@@ -198,6 +200,8 @@ function animate() {
 function render() {
 
     analyzer.getByteFrequencyData(frequencyData)
+    analyzer.getByteTimeDomainData(timeDomainData);
+    //console.log(timeDomainData)
 
     // set camera position
     camera.position.x += ( mouseX - camera.position.x ) * .05;
@@ -206,72 +210,47 @@ function render() {
 
     var positions = particles.geometry.attributes.position.array;
     var scales = particles.geometry.attributes.scale.array;
+   // var colors = particles.geometry.attributes.color.array;
+
+    var i = 0, j = 0;
 
     // consolidate the frequency array by summing the amplitudes of nearby frequencies
     let avgData = []
-    let sumAmplitude = 0;
     let groupSize = 1;
-    for(start_i=0; start_i < frequencyData.length - groupSize - 1; start_i+=groupSize) {
-        // add average amplitude for group of frequencies 
-        let sum = frequencyData.slice(start_i, start_i + groupSize + 1).reduce((prev, curr) => prev + curr) 
-        avgData.push(sum / groupSize)
-        
-        // add amplitude to total sum
-        sumAmplitude += sum
-
-        // increase group size for higher freequencies 
-        if(start_i > 30) {
+    for(start_i=1; start_i < frequencyData.length - groupSize - 1; start_i+=groupSize) {
+        avgData.push(frequencyData.slice(start_i, start_i + groupSize + 1).reduce((prev, curr) => prev + curr) / groupSize)
+        if(start_i > 20) {
             groupSize+=2
         }
     }
 
-    // determines the number of particles that move
-    const amp_scale = sumAmplitude / 100000;
-    const num_active = Math.round(amp_scale * AMOUNTY)
+    // determines volume of movement 
+    var volume_scale = 100 
 
-    // reposition particles
-    highestParticleY = 0;
-    lowestParticleY = 0;
-    var all_pos = [];
-    var i = 0, j = 0;
     for ( var ix = 0; ix < AMOUNTX; ix ++ ) {
-        let volume_scale = avgData[ix]
-        
-        // if more particles should be active, choose new random active particles
-       if(activeParticles[ix].length < num_active){
-            // store all positions in basePositions
-            activeParticles[ix].forEach(
-                (index) => basePositions[index] = positions[index*3 + 1]);
-            activeParticles[ix] = []
-            for(let x = 0; x < num_active; x++){
-                let randIndex = Math.floor(Math.random() * (AMOUNTY + 1))
-                activeParticles[ix].push(randIndex)
-            }
-        }
-        let active = activeParticles[ix]
-        
+        volume_scale = avgData[ix]
 
         for ( var iy = 0; iy < AMOUNTY; iy ++ ) {
+            
+           // volume_scale = frequencyData[iy] 
+           // console.log(volume_scale)
+           //  positions[ i + 1 ] = ( Math.sin( ( ix + count ) * 0.3 ) * volume_scale ) +
+           //                  ( Math.sin( ( iy + count ) * 0.5 ) * volume_scale );
+           // positions[ i + 1 ] = Math.sin((ix + count)*.3) * volume_scale
 
-            if(active.includes(iy)){
-                // sets y position of particle
-                positions[ i + 1 ] =  basePositions[ iy ] + ((volume_scale * volume_scale) / 300 * dir)
-            }
+            positions[ i + 1 ] = volume_scale
 
-            all_pos.push(positions[ i + 1 ])
-            if(positions[ i + 1 ] > highestParticleY) {
-                highestParticleY = positions[ i + 1 ]
-            } else if (positions[ i + 1 ] < lowestParticleY) {
-                lowestParticleY = positions[ i + 1 ]
-            }
-           
-            // sets scale of particle 
-            scales[ j ] = ( Math.sin( ( ix + count ) * 0.3 ) + 1 ) * 8 +
-                            ( Math.sin( ( iy + count ) * 0.5 ) + 1 ) * 8;
+        
+           // scales[ j ] = ( Math.sin( ( ix + count ) * 0.3 ) + 1 ) * 8 +
+           //                 ( Math.sin( ( iy + count ) * 0.5 ) + 1 ) * 8;
+
+           scales[ j ] = (volume_scale / 280) * 25
+
+
+          // colors[ j ] = .5
 
             i += 3;
             j ++;
-            
 
         }
 
@@ -279,38 +258,13 @@ function render() {
 
     particles.geometry.attributes.position.needsUpdate = true;
     particles.geometry.attributes.scale.needsUpdate = true;
+   // particles.geometry.attributes.color.needsUpdate = true;
 
-    // swap directions if reached too high or low
-    var mean = all_pos.reduce((prev, cur) => prev + cur) / all_pos.length
-    if((mean > 3400 && dir == 1) || (mean < 2700 && dir == -1)) {
-        console.log("SWITCHING TO ", dir)
-        dir *= -1;
-    } 
-    
-    // pan scene up based on y of highest particle
-    top_particle_within_view = highestParticleY <= (scene.position.y + window.innerHeight)
-    bottom_particle_within_view = lowestParticleY >= (scene.position.y)
-    mean_particle_within_view = mean >= scene.position.y && mean 
+   // renderer.render( scene, camera );
 
-    if(dir == 1) {
-        console.log(dir)
-        const diff = (Math.abs(scene.position.y) + window.innerHeight) - Math.abs(highestParticleY)
-        if(diff > 0) {
-             scene.position.y -= (dir * ((amp_scale + 1)*(amp_scale + 1) - .5));
-        } else if (diff < 0) {
-           scene.position.y -= (dir * ((amp_scale + 1)*(amp_scale + 1) + 1.5));
-        }
-    } else { 
-        const diff = (Math.abs(scene.position.y)) - Math.abs(mean)
-        if(diff > 0) {
-             scene.position.y -= (dir * ((amp_scale + 1)*(amp_scale + 1) - .5));
-        } else if (diff < 0) {
-           dir *= 1;
-        }
-    }
-    
-    renderer.render( scene, camera );
-
-    // DETERMINES SPEED IF USING SIN(default is 0.1)
+    // DETERMINES SPEED (default is 0.1)
     count += 0.1;
+
+    
+    //console.log(frequencyData)
 }
