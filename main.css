@@ -26,6 +26,33 @@ canvas {
 	display: block;
 }
 
+
+/* INTRO SCREEN */ 
+#audio-file-uploader {
+	margin: auto;
+	width: fit-content;
+}
+
+#audio-upload-instr {
+	color: gray;
+	font-size: 90%;
+}
+
+#intro-controls {
+	display: flex;
+	flex-direction: column;
+	position: relative;
+	top: 40%;
+	margin: auto;
+	width: fit-content;
+}
+
+#intro-btn {
+	width: fit-content;
+	margin: auto;
+	margin-top: 35px;
+}
+
 #intro-screen {
 	position: absolute;
 	margin: auto;
@@ -33,12 +60,6 @@ canvas {
 	height: 100%;
 	text-align: center;
 	background: black;
-}
-
-#intro-btn {
-	margin: auto;
-	top: 45%;
-    position: relative;
 }
 
 #info {
@@ -56,9 +77,15 @@ canvas {
 	z-index: 1; /* TODO Solve this in HTML */
 }
 
+
+
+
+/* GENERAL */
+
 a, button, input, select {
 	pointer-events: auto;
 }
+
 
 .dg.ac {
 	-moz-user-select: none;

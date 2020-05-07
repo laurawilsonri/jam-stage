@@ -21,19 +21,27 @@
 	<body>
 		<!-- Intro Screen -->
 		<div id="intro-screen">
-			<button id="intro-btn" type="button" class="btn btn-outline-light" onclick="begin()" >BEGIN</button>
+			<div id="intro-controls">
+				<label id="audio-upload-instr">choose audio or continue with default</label>
+				<input type="file"  id="audio-file-uploader" accept=".mp3,audio/*">
+				<button id="intro-btn" type="button" class="btn btn-outline-light" onclick="begin()" >BEGIN</button>
+			</div>
 		</div>
 
-		<!-- The audio used for testing -->
+		<!-- The default audio -->
 		<audio id="curr-audio" src="music/electric1.mp3" type="audio/mpeg"></audio>
 
 		<script src="js/three.js"></script>
 
-		<!-- Vertex shader. TODO: move to js file -->
+		<!-- Vertex shader.  -->
 		<script type="x-shader/x-vertex" id="vertexshader">
 			attribute float scale;
+			attribute vec3 customColor;
+			varying vec3 vertexColor;
 
 			void main() {
+
+				vertexColor = customColor;
 
 				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
 
@@ -43,16 +51,18 @@
 			}
 		</script>
 
-		<!-- Fragment shader. TODO: move to js file -->
+		<!-- Fragment shader. -->
 		<script type="x-shader/x-fragment" id="fragmentshader">
 
-			uniform vec3 color;
+			uniform vec3 color; // used to alter overall brightness
+			varying vec3 vertexColor;
+			float vertexOpacity;
 
 			void main() {
 
-				if ( length( gl_PointCoord - vec2( 0.5, 0.5 ) ) > 0.475 ) discard;
+			if ( length( gl_PointCoord - vec2( 0.5, 0.5 ) ) > 0.475 ) discard;
 
-				gl_FragColor = vec4( color, 1.0 );
+			gl_FragColor = vec4( color * vertexColor, 1.0 );
 
 			}
 

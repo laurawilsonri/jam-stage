@@ -2,6 +2,7 @@
 // built off the Three.js example given here: https://threejs.org/examples/#webgl_geometry_hierarchy2
 
 var SEPARATION = 90, AMOUNTX = 40, AMOUNTY = 40;
+let R_FACTOR = .15, G_FACTOR = .01, B_FACTOR = .2;
 
 var container;
 var camera, scene, renderer;
@@ -13,18 +14,13 @@ var mouseX = 0, mouseY = 0;
 var windowHalfX = window.innerWidth / 2;
 var windowHalfY = window.innerHeight / 2;
 
-// loads a specific font -- I added this when I was trying to add words but will get back to this
-//var loader = new THREE.FontLoader();
-//loader.load( 'helvetiker_bold.typeface.json', function ( font ) {
-//} );
-
 var frequencyData = null;
+var timeData = null;
 var analyzer = null;
 var activeParticles = null;
 let basePositions = [];
 let highestParticleY = 0;
-let dir = 1;
-
+let prevAmp = 0; // tracks the last total sum amplitude of the frequencies
 
 // called when BEGIN button is clicked 
 function begin() {
@@ -50,10 +46,6 @@ function init() {
     camera.position.z = 1000;
 
     scene = new THREE.Scene();
-
-    //add fog to scene -- doesn't work because shader is incompatible
-    var fogColor = new THREE.Color(0xffffff);
-    scene.fog = new THREE.FogExp2(fogColor, 0.0025, 20 );
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 1);
     scene.add(ambientLight);
@@ -88,11 +80,20 @@ function init() {
     var geometry = new THREE.BufferGeometry();
     geometry.setAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
     geometry.setAttribute( 'scale', new THREE.BufferAttribute( scales, 1 ) );
+    
+    // add color!
+    var colors = new Float32Array ( numParticles * 3 );
+    for ( var ic = 0; ic < colors.length / 3; ic++) {
+        colors[ic*3] = (Math.sin(i) + 1) / 2
+        colors[ic*3+1] = (Math.sin(i) + 1) / 2
+        colors[ic*3+2] = (Math.sin(i) + 1) / 2
+    }
+    geometry.setAttribute( 'customColor', new THREE.BufferAttribute( colors, 3 ) );
 
     var material = new THREE.ShaderMaterial( {
 
         uniforms: {
-            color: { value: new THREE.Color( 0xffffff ) },
+            color: { value: new THREE.Color(1, 1 , 1)},
         },
         vertexShader: document.getElementById( 'vertexshader' ).textContent,
         fragmentShader: document.getElementById( 'fragmentshader' ).textContent,
@@ -123,12 +124,26 @@ function init() {
 
 }
 
+/******  AUDIO CONTROLS  *******/ 
+
+$('#audio-file-uploader').change(selectAudio);
+
+function selectAudio(event) {
+    console.log("HERE")
+    var files = event.target.files;
+    var audio = document.getElementById('curr-audio')
+    audio.src = URL.createObjectURL(files[0]);
+    audio.onend = function(e) {
+        URL.revokeObjectURL(this.src);
+    }
+}
+
 function setupAudio(){
     
     // play audio in background
     var audio = document.getElementById('curr-audio')
     audio.load();
-    audio.volume = .3
+    audio.volume = .5
     audio.play();
 
     // set up audio analysis
@@ -140,7 +155,11 @@ function setupAudio(){
     audioSrc.connect(ctx.destination);
     ctx.resume();
     frequencyData = new Uint8Array(analyzer.frequencyBinCount)
+    timeData = new Uint8Array(analyzer.fftSize);
 }
+
+
+/****** RESPONSIVENESS AND MOUSE INTERACTION ******/ 
 
 function onWindowResize() {
 
@@ -186,6 +205,7 @@ function onDocumentTouchMove( event ) {
 
 }
  
+/*********** PARTICLE ANIMATION **********/
 
 // controls the animation
 function animate() {
@@ -206,10 +226,11 @@ function render() {
 
     var positions = particles.geometry.attributes.position.array;
     var scales = particles.geometry.attributes.scale.array;
+    var colors = particles.geometry.attributes.customColor.array;
 
     // consolidate the frequency array by summing the amplitudes of nearby frequencies
     let avgData = []
-    let sumAmplitude = 0;
+    sumAmp = 0;
     let groupSize = 1;
     for(start_i=0; start_i < frequencyData.length - groupSize - 1; start_i+=groupSize) {
         // add average amplitude for group of frequencies 
@@ -217,7 +238,7 @@ function render() {
         avgData.push(sum / groupSize)
         
         // add amplitude to total sum
-        sumAmplitude += sum
+        sumAmp += sum
 
         // increase group size for higher freequencies 
         if(start_i > 30) {
@@ -225,9 +246,15 @@ function render() {
         }
     }
 
+    var loudness = avgData.reduce((prev, cur) => prev + cur) /  avgData.length
+    console.log(loudness)
+
+    // determines rate of color change
+    var speed_count = Math.abs(sumAmp - prevAmp) / 10000
+
     // determines the number of particles that move
-    const amp_scale = sumAmplitude / 100000;
-    const num_active = Math.round(amp_scale * AMOUNTY)
+    const amp_scale = sumAmp / 100000;
+    const num_active = Math.floor(amp_scale * AMOUNTY)
 
     // reposition particles
     highestParticleY = 0;
@@ -237,8 +264,8 @@ function render() {
     for ( var ix = 0; ix < AMOUNTX; ix ++ ) {
         let volume_scale = avgData[ix]
         
-        // if more particles should be active, choose new random active particles
-       if(activeParticles[ix].length < num_active){
+       // if a different number of particles should be active, choose new random active particles
+       if(Math.abs(activeParticles[ix].length - num_active) > 2){
             // store all positions in basePositions
             activeParticles[ix].forEach(
                 (index) => basePositions[index] = positions[index*3 + 1]);
@@ -255,19 +282,19 @@ function render() {
 
             if(active.includes(iy)){
                 // sets y position of particle
-                positions[ i + 1 ] =  basePositions[ iy ] + ((volume_scale * volume_scale) / 300 * dir)
+                positions[ i + 1 ] =  basePositions[ iy ] + ((volume_scale * volume_scale) / 2000)
+
+                // sets color of particle
+                colors[i] = Math.min(1, (Math.sin(i + (Math.random()* speed_count * (volume_scale/250))) + 1) /  2 + R_FACTOR)
+                colors[i+1] = Math.min(1, (Math.sin(i + (Math.random()* speed_count * (volume_scale/250))) + 1) / 2 + G_FACTOR)
+                colors[i+2] = Math.min(1, (Math.sin(i + (Math.random()* speed_count * (volume_scale/250))) + 1) / 2 + B_FACTOR)
             }
 
             all_pos.push(positions[ i + 1 ])
-            if(positions[ i + 1 ] > highestParticleY) {
-                highestParticleY = positions[ i + 1 ]
-            } else if (positions[ i + 1 ] < lowestParticleY) {
-                lowestParticleY = positions[ i + 1 ]
-            }
            
-            // sets scale of particle 
-            scales[ j ] = ( Math.sin( ( ix + count ) * 0.3 ) + 1 ) * 8 +
-                            ( Math.sin( ( iy + count ) * 0.5 ) + 1 ) * 8;
+            scales[j] = ( Math.sin( ( ix + count ) * 0.3 ) + 1 ) * (loudness*loudness) / 1000 +
+                 ( Math.sin( ( iy + count ) * 0.5 ) + 1 ) * (loudness*loudness) / 1000; 
+                 
 
             i += 3;
             j ++;
@@ -277,40 +304,20 @@ function render() {
 
     }
 
+    // move all particles down by the mean y value so camera follows movement
+    const mean = all_pos.reduce((prev, cur) => prev + cur) / all_pos.length
+    for (let yi = 1; yi < AMOUNTY * AMOUNTX * 3; yi += 3 ) {
+        positions[yi] = positions[yi] - mean;
+    }
+
+    // update render
     particles.geometry.attributes.position.needsUpdate = true;
     particles.geometry.attributes.scale.needsUpdate = true;
-
-    // swap directions if reached too high or low
-    var mean = all_pos.reduce((prev, cur) => prev + cur) / all_pos.length
-    if((mean > 3400 && dir == 1) || (mean < 2700 && dir == -1)) {
-        console.log("SWITCHING TO ", dir)
-        dir *= -1;
-    } 
-    
-    // pan scene up based on y of highest particle
-    top_particle_within_view = highestParticleY <= (scene.position.y + window.innerHeight)
-    bottom_particle_within_view = lowestParticleY >= (scene.position.y)
-    mean_particle_within_view = mean >= scene.position.y && mean 
-
-    if(dir == 1) {
-        console.log(dir)
-        const diff = (Math.abs(scene.position.y) + window.innerHeight) - Math.abs(highestParticleY)
-        if(diff > 0) {
-             scene.position.y -= (dir * ((amp_scale + 1)*(amp_scale + 1) - .5));
-        } else if (diff < 0) {
-           scene.position.y -= (dir * ((amp_scale + 1)*(amp_scale + 1) + 1.5));
-        }
-    } else { 
-        const diff = (Math.abs(scene.position.y)) - Math.abs(mean)
-        if(diff > 0) {
-             scene.position.y -= (dir * ((amp_scale + 1)*(amp_scale + 1) - .5));
-        } else if (diff < 0) {
-           dir *= 1;
-        }
-    }
+    particles.geometry.attributes.customColor.needsUpdate = true;
     
     renderer.render( scene, camera );
 
-    // DETERMINES SPEED IF USING SIN(default is 0.1)
+    // speed of re-scaling particles
     count += 0.1;
+    prevAmp = sumAmp
 }
