@@ -22,15 +22,39 @@ let basePositions = [];
 let highestParticleY = 0;
 let prevAmp = 0; // tracks the last total sum amplitude of the frequencies
 
+/*** SETUP *****/
+
+//add back button interaction
+$(document).ready(function() {
+    $('#back-btn').hide()
+
+    // make brighter on hover
+    $('#back-btn').hover(
+        function() { 
+            $(this).css({color: "white"}) }, 
+        function() { 
+            $(this).css({color: "gray"})  
+        });
+
+    // on click, go back to home screen
+    $('#back-btn').click(
+        function() { 
+            exit();
+        });
+});
+
+
 // called when BEGIN button is clicked 
 function begin() {
     //remove intro screen
     $('#intro-screen').fadeOut();
+    $('#back-btn').fadeIn();
 
     // start visualization
     init();
     animate();
 }
+
 
 /* 
 * Set up initial visuals and connect to audio input 
@@ -66,7 +90,8 @@ function init() {
             positions[ i ] = ix * SEPARATION - ( ( AMOUNTX * SEPARATION ) / 2 ); // x
             positions[ i + 1 ] = 0; // y
             positions[ i + 2 ] = iy * SEPARATION - ( ( AMOUNTY * SEPARATION ) / 2 ); // z
-            basePositions.push(0)
+           
+            basePositions.push(0) // base y position
 
             scales[ j ] = 1;
 
@@ -129,7 +154,6 @@ function init() {
 $('#audio-file-uploader').change(selectAudio);
 
 function selectAudio(event) {
-    console.log("HERE")
     var files = event.target.files;
     var audio = document.getElementById('curr-audio')
     audio.src = URL.createObjectURL(files[0]);
@@ -138,16 +162,26 @@ function selectAudio(event) {
     }
 }
 
+function exit() {
+    // go back to intro screen
+    $('#intro-screen').hide();
+    $('#intro-screen').fadeIn();
+    ctx.close()
+    document.getElementById('curr-audio').remove();
+    $('#back-btn').fadeOut();
+}
+
 function setupAudio(){
     
     // play audio in background
     var audio = document.getElementById('curr-audio')
+
     audio.load();
     audio.volume = .5
     audio.play();
 
     // set up audio analysis
-    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
     var audioSrc = ctx.createMediaElementSource(audio)
     analyzer = ctx.createAnalyser();
 
@@ -201,6 +235,9 @@ function onDocumentTouchMove( event ) {
         mouseX = event.touches[ 0 ].pageX - windowHalfX;
         mouseY = event.touches[ 0 ].pageY - windowHalfY;
 
+         // hide back button
+       //  $('#back-btn').fadeOut()
+
     }
 
 }
@@ -247,7 +284,6 @@ function render() {
     }
 
     var loudness = avgData.reduce((prev, cur) => prev + cur) /  avgData.length
-    console.log(loudness)
 
     // determines rate of color change
     var speed_count = Math.abs(sumAmp - prevAmp) / 10000
@@ -255,6 +291,12 @@ function render() {
     // determines the number of particles that move
     const amp_scale = sumAmp / 100000;
     const num_active = Math.floor(amp_scale * AMOUNTY)
+
+    // min and max for sin x and z motion
+    MIN_X_PERCENT = .7;
+    MAX_X_PERCENT = 1;
+    MIN_Z_PERCENT = 0;
+    MAX_Z_PERCENT = amp_scale;
 
     // reposition particles
     highestParticleY = 0;
@@ -277,9 +319,19 @@ function render() {
         }
         let active = activeParticles[ix]
         
+        var max_x = (ix * SEPARATION - ( ( AMOUNTX * SEPARATION ) / 2 )) * MAX_X_PERCENT
+        var min_x = (ix * SEPARATION - ( ( AMOUNTX * SEPARATION ) / 2 ))  * MIN_X_PERCENT
 
         for ( var iy = 0; iy < AMOUNTY; iy ++ ) {
 
+            var max_z = (iy * SEPARATION - ( ( AMOUNTY * SEPARATION ) / 2 )) * MAX_Z_PERCENT
+            var min_z = (iy * SEPARATION - ( ( AMOUNTY * SEPARATION ) / 2 )) * MIN_Z_PERCENT;
+
+             // sets x and z position of particle
+             positions[ i ] =  ((Math.sin((count + amp_scale) / 3) + 1.0) / 2.0) * (max_x - min_x) + min_x; // x
+             positions[ i + 2 ] = ((Math.sin((count + amp_scale) / 3) + 1.0) / 2.0) * (max_z - min_z) + min_z; // z
+
+             // alter y if particle is on the deemed active particles
             if(active.includes(iy)){
                 // sets y position of particle
                 positions[ i + 1 ] =  basePositions[ iy ] + ((volume_scale * volume_scale) / 2000)
